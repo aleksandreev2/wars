@@ -210,18 +210,19 @@ public final class MatchManager {
             return;
         }
 
+        // During the short capture-reset pause, keep combat AI from immediately reacquiring targets.
+        if (roundResetTicks >= 0) {
+            if (roundResetTicks > 0) {
+                roundResetTicks--;
+                return;
+            }
+            resetRound();
+            roundResetTicks = -1;
+            return;
+        }
+
         TestNpcService.tick(world, center, match);
         CastleGuardService.tick(world, center, match);
-
-        if (roundResetTicks < 0) {
-            return;
-        }
-        if (roundResetTicks > 0) {
-            roundResetTicks--;
-            return;
-        }
-        resetRound();
-        roundResetTicks = -1;
     }
 
     private static void resetRound() {
