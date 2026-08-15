@@ -52,11 +52,13 @@ public final class MatchManager {
         restoreObjectiveBeds();
         preparePlayer(red, Side.RED);
         preparePlayer(blue, Side.BLUE);
+        CastleGuardService.reset(world, center, match);
         CastleWarsMod.LOGGER.info("Castle Wars match started: RED={} BLUE={}", red.getGameProfile().getName(), blue.getGameProfile().getName());
         return null;
     }
 
     public static synchronized void stop() {
+        CastleGuardService.clear();
         if (world != null) {
             clearPlayerPlacedBlocks();
             restoreObjectiveBeds();
@@ -103,14 +105,24 @@ public final class MatchManager {
     }
 
     public static synchronized MatchState.KillResult onPlayerKilled(UUID victimId, UUID killerId) {
+        if (killerId == null) {
+            return MatchState.KillResult.NONE;
+        }
+        return onParticipantDefeated(victimId, sideOf(killerId));
+    }
+
+    public static synchronized MatchState.KillResult onParticipantDefeated(UUID victimId, Side defeatingSide) {
         if (!isRunning() || isRoundResetPending()) {
             return MatchState.KillResult.NONE;
         }
-        MatchState.KillResult result = match.onKill(victimId, killerId);
+        MatchState.KillResult result = match.onDefeat(victimId, defeatingSide);
         if (result == MatchState.KillResult.POINT) {
             roundResetTicks = ROUND_RESET_DELAY_TICKS;
             CastleWarsMod.LOGGER.info("Castle captured. Score RED {} : {} BLUE", match.score(Side.RED), match.score(Side.BLUE));
         } else if (result == MatchState.KillResult.MATCH_WON) {
+            CastleGuardService.clear();
+            clearPlayerPlacedBlocks();
+            restoreObjectiveBeds();
             CastleWarsMod.LOGGER.info("Castle Wars finished. Score RED {} : {} BLUE", match.score(Side.RED), match.score(Side.BLUE));
         }
         return result;
@@ -139,7 +151,13 @@ public final class MatchManager {
     }
 
     public static synchronized void tick() {
-        if (!isRunning() || roundResetTicks < 0) {
+        if (!isRunning()) {
+            return;
+        }
+
+        CastleGuardService.tick(world, center, match);
+
+        if (roundResetTicks < 0) {
             return;
         }
         if (roundResetTicks > 0) {
@@ -160,6 +178,7 @@ public final class MatchManager {
         ServerPlayerEntity blue = world.getServer().getPlayerList().getPlayer(match.player(Side.BLUE));
         if (red != null) preparePlayer(red, Side.RED);
         if (blue != null) preparePlayer(blue, Side.BLUE);
+        CastleGuardService.reset(world, center, match);
         CastleWarsMod.LOGGER.info("Castle Wars round reset");
     }
 
