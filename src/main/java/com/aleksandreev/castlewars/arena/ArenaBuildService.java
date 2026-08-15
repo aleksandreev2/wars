@@ -6,15 +6,20 @@ import net.minecraft.util.Rotation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.server.ServerWorld;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Base64;
 
 public final class ArenaBuildService {
-    private static final String SCHEMATIC_RESOURCE = "/data/castlewars/structures/medieval_castle.schem";
+    private static final String SCHEMATIC_RESOURCE_PREFIX = "/data/castlewars/structures/medieval_castle.schem.b64.";
+    private static final int SCHEMATIC_CHUNKS = 7;
     private static final int BLOCKS_PER_TICK = 8_000;
 
     private static SpongeV3Schematic cachedSchematic;
     private static BuildTask activeTask;
+    private static BlockPos arenaCenter;
 
     private ArenaBuildService() {
     }
@@ -24,13 +29,22 @@ public final class ArenaBuildService {
             return false;
         }
         SpongeV3Schematic schematic = getSchematic();
-        activeTask = new BuildTask(world, center.immutable(), schematic);
+        arenaCenter = center.immutable();
+        activeTask = new BuildTask(world, arenaCenter, schematic);
         CastleWarsMod.LOGGER.info("Arena build started at {}", center);
         return true;
     }
 
     public static synchronized boolean isBuilding() {
         return activeTask != null;
+    }
+
+    public static synchronized boolean hasArena() {
+        return arenaCenter != null && activeTask == null;
+    }
+
+    public static synchronized BlockPos arenaCenter() {
+        return arenaCenter;
     }
 
     public static synchronized int progressPercent() {
@@ -42,7 +56,7 @@ public final class ArenaBuildService {
             return;
         }
         if (activeTask.tick(BLOCKS_PER_TICK)) {
-            CastleWarsMod.LOGGER.info("Arena build completed");
+            CastleWarsMod.LOGGER.info("Arena build completed at {}", arenaCenter);
             activeTask = null;
         }
     }
@@ -51,13 +65,33 @@ public final class ArenaBuildService {
         if (cachedSchematic != null) {
             return cachedSchematic;
         }
-        try (InputStream input = ArenaBuildService.class.getResourceAsStream(SCHEMATIC_RESOURCE)) {
-            if (input == null) {
-                throw new IOException("Missing bundled schematic resource " + SCHEMATIC_RESOURCE);
+
+        ByteArrayOutputStream encoded = new ByteArrayOutputStream(32_768);
+        byte[] buffer = new byte[4096];
+        for (int chunk = 0; chunk < SCHEMATIC_CHUNKS; chunk++) {
+            String resource = SCHEMATIC_RESOURCE_PREFIX + String.format("%02d", chunk);
+            try (InputStream input = ArenaBuildService.class.getResourceAsStream(resource)) {
+                if (input == null) {
+                    throw new IOException("Missing bundled schematic resource " + resource);
+                }
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    encoded.write(buffer, 0, read);
+                }
             }
-            cachedSchematic = SpongeV3Schematic.load(input);
-            return cachedSchematic;
         }
+
+        final byte[] compressed;
+        try {
+            compressed = Base64.getMimeDecoder().decode(encoded.toByteArray());
+        } catch (IllegalArgumentException ex) {
+            throw new IOException("Bundled schematic Base64 is invalid", ex);
+        }
+
+        try (InputStream decoded = new ByteArrayInputStream(compressed)) {
+            cachedSchematic = SpongeV3Schematic.load(decoded);
+        }
+        return cachedSchematic;
     }
 
     private static final class BuildTask {
