@@ -1,0 +1,31 @@
+name: build
+
+on:
+  push:
+    branches: [ main, 'feat/**', 'fix/**' ]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java for Gradle
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Gradle 8.4
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
+      - name: Build and test
+        run: gradle --no-daemon build
+      - name: Upload mod jar
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: castlewars-jar
+          path: build/libs/*.jar
+          if-no-files-found: error
