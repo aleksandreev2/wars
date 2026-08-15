@@ -33,6 +33,22 @@ class MatchStateTest {
     }
 
     @Test
+    void teamGuardCanSecureCaptureAfterBedBreak() {
+        MatchState match = new MatchState(red, blue, 10);
+        assertTrue(match.destroyBed(Side.BLUE, Side.RED));
+        assertEquals(MatchState.KillResult.POINT, match.onDefeat(blue, Side.RED));
+        assertEquals(1, match.score(Side.RED));
+    }
+
+    @Test
+    void guardCannotScoreAgainstItsOwnParticipant() {
+        MatchState match = new MatchState(red, blue, 10);
+        assertTrue(match.destroyBed(Side.RED, Side.BLUE));
+        assertEquals(MatchState.KillResult.NONE, match.onDefeat(red, Side.RED));
+        assertEquals(0, match.score(Side.RED));
+    }
+
+    @Test
     void deathWithoutValidOpponentDoesNotScore() {
         MatchState match = new MatchState(red, blue, 10);
         match.destroyBed(Side.BLUE, Side.RED);
