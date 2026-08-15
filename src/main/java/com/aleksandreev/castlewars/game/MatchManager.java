@@ -40,6 +40,10 @@ public final class MatchManager {
             return "Both players must be in the same dimension.";
         }
 
+        if (match != null) {
+            stop();
+        }
+
         match = new MatchState(red.getUUID(), blue.getUUID(), CaptureRules.DEFAULT_WIN_SCORE);
         world = red.getLevel();
         center = ArenaBuildService.arenaCenter().immutable();
@@ -179,12 +183,12 @@ public final class MatchManager {
         world.setBlock(
                 ArenaCoordinates.bedFoot(center, side),
                 BlockStateText.parseRequired("minecraft:" + color + "_bed[facing=" + facing + ",occupied=false,part=foot]"),
-                3
+                2
         );
         world.setBlock(
                 ArenaCoordinates.bedHead(center, side),
                 BlockStateText.parseRequired("minecraft:" + color + "_bed[facing=" + facing + ",occupied=false,part=head]"),
-                3
+                2
         );
     }
 
