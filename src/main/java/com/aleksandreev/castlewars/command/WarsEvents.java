@@ -127,8 +127,8 @@ public final class WarsEvents {
                 return;
             }
             if (MatchManager.destroyObjective(objectiveOwner, attacker)) {
-                player.sendStatusMessage(new StringTextComponent(
-                        "Enemy bed destroyed. Kill the defender to score a point!"), false);
+                player.displayClientMessage(new StringTextComponent(
+                        "Enemy bed destroyed. Defeat the defender to score a point!"), false);
             }
             return;
         }
@@ -170,12 +170,12 @@ public final class WarsEvents {
         if (result == MatchState.KillResult.POINT) {
             ServerPlayerEntity killer = ids.killer;
             if (killer != null) {
-                killer.sendStatusMessage(new StringTextComponent("Castle captured: +1 point!"), false);
+                killer.displayClientMessage(new StringTextComponent("Castle captured: +1 point!"), false);
             }
         } else if (result == MatchState.KillResult.MATCH_WON) {
             ServerPlayerEntity killer = ids.killer;
             if (killer != null) {
-                killer.sendStatusMessage(new StringTextComponent("You won Castle Wars!"), false);
+                killer.displayClientMessage(new StringTextComponent("You won Castle Wars!"), false);
             }
         }
     }
