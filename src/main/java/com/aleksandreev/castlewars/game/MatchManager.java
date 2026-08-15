@@ -83,6 +83,7 @@ public final class MatchManager {
 
         preparePlayer(player, playerSide, true);
         TestNpcService.reset(world, center, match);
+        TestNpcService.setInvulnerable(true);
         CastleGuardService.reset(world, center, match);
         MatchFeedbackService.open(world, match);
         startCountdownTicks = ROUND_START_COUNTDOWN_TICKS;
@@ -205,6 +206,7 @@ public final class MatchManager {
             ArenaFeatureService.restoreRoundFeatures(world, center);
             SiegeGateService.clear();
             WarCampService.clear();
+            MatchFeedbackService.close();
             CastleWarsMod.LOGGER.info("Castle Wars finished. Score RED {} : {} BLUE", match.score(Side.RED), match.score(Side.BLUE));
         }
         return result;
