@@ -4,16 +4,22 @@ import com.aleksandreev.castlewars.CastleWarsMod;
 import com.aleksandreev.castlewars.arena.ArenaBuildService;
 import com.aleksandreev.castlewars.arena.ArenaCoordinates;
 import com.aleksandreev.castlewars.game.CastleGuardService;
+import com.aleksandreev.castlewars.game.MatchFeedbackService;
 import com.aleksandreev.castlewars.game.MatchManager;
 import com.aleksandreev.castlewars.game.MatchState;
 import com.aleksandreev.castlewars.game.Side;
+import com.aleksandreev.castlewars.game.SiegeGateService;
 import com.aleksandreev.castlewars.game.TestNpcService;
+import com.aleksandreev.castlewars.game.WarCampService;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.command.CommandSource;
 import net.minecraft.command.Commands;
 import net.minecraft.command.arguments.EntityArgument;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.ServerPlayerEntity;
+import net.minecraft.item.AxeItem;
+import net.minecraft.item.PickaxeItem;
+import net.minecraft.item.SwordItem;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.StringTextComponent;
 import net.minecraftforge.event.RegisterCommandsEvent;
@@ -54,11 +60,13 @@ public final class WarsEvents {
                                             context.getSource().sendFailure(new StringTextComponent("Castle Wars: an arena build is already running."));
                                             return 0;
                                         }
-                                        context.getSource().sendSuccess(new StringTextComponent("Castle Wars: building two castles around this position..."), true);
+                                        context.getSource().sendSuccess(new StringTextComponent(
+                                                "Castle Wars v0.2: building castles + three-route siege battlefield..."), true);
                                         return 1;
                                     } catch (IOException ex) {
                                         CastleWarsMod.LOGGER.error("Failed to start arena build", ex);
-                                        context.getSource().sendFailure(new StringTextComponent("Castle Wars: failed to load bundled schematic. Check server log."));
+                                        context.getSource().sendFailure(new StringTextComponent(
+                                                "Castle Wars: failed to load bundled schematic. Check server log."));
                                         return 0;
                                     }
                                 }))
@@ -67,7 +75,7 @@ public final class WarsEvents {
                                     String text = ArenaBuildService.isBuilding()
                                             ? "Castle Wars: arena build " + ArenaBuildService.progressPercent() + "%"
                                             : ArenaBuildService.hasArena()
-                                                ? "Castle Wars: arena is ready."
+                                                ? "Castle Wars: v0.2 siege arena is ready."
                                                 : "Castle Wars: no arena has been built in this server session.";
                                     context.getSource().sendSuccess(new StringTextComponent(text), false);
                                     return 1;
@@ -85,34 +93,28 @@ public final class WarsEvents {
                                                         return 0;
                                                     }
                                                     context.getSource().sendSuccess(new StringTextComponent(
-                                                            "Castle Wars started: RED " + red.getGameProfile().getName()
+                                                            "Castle Wars v0.2 started: RED " + red.getGameProfile().getName()
                                                                     + " vs BLUE " + blue.getGameProfile().getName()
-                                                                    + ". First to 10 points. Each castle has 5 iron golem guards."), true);
+                                                                    + ". Destroy the Castle Core, then defeat the defender. First to 10."), true);
                                                     return 1;
                                                 }))))
-                        .then(Commands.literal("score")
-                                .executes(context -> showScore(context.getSource())))
-                        .then(Commands.literal("stop")
-                                .executes(context -> {
-                                    MatchManager.stop();
-                                    context.getSource().sendSuccess(new StringTextComponent("Castle Wars match stopped."), true);
-                                    return 1;
-                                })))
+                        .then(Commands.literal("score").executes(context -> showScore(context.getSource())))
+                        .then(Commands.literal("stop").executes(context -> {
+                            MatchManager.stop();
+                            context.getSource().sendSuccess(new StringTextComponent("Castle Wars match stopped."), true);
+                            return 1;
+                        })))
                 .then(Commands.literal("test")
                         .then(Commands.literal("start")
                                 .executes(context -> startSolo(context.getSource(), Side.RED))
-                                .then(Commands.literal("red")
-                                        .executes(context -> startSolo(context.getSource(), Side.RED)))
-                                .then(Commands.literal("blue")
-                                        .executes(context -> startSolo(context.getSource(), Side.BLUE))))
-                        .then(Commands.literal("score")
-                                .executes(context -> showScore(context.getSource())))
-                        .then(Commands.literal("stop")
-                                .executes(context -> {
-                                    MatchManager.stop();
-                                    context.getSource().sendSuccess(new StringTextComponent("Castle Wars solo-test stopped."), true);
-                                    return 1;
-                                }))));
+                                .then(Commands.literal("red").executes(context -> startSolo(context.getSource(), Side.RED)))
+                                .then(Commands.literal("blue").executes(context -> startSolo(context.getSource(), Side.BLUE))))
+                        .then(Commands.literal("score").executes(context -> showScore(context.getSource())))
+                        .then(Commands.literal("stop").executes(context -> {
+                            MatchManager.stop();
+                            context.getSource().sendSuccess(new StringTextComponent("Castle Wars solo-test stopped."), true);
+                            return 1;
+                        }))));
     }
 
     private static int startSolo(CommandSource source, Side playerSide) {
@@ -131,9 +133,9 @@ public final class WarsEvents {
         }
 
         source.sendSuccess(new StringTextComponent(
-                "Castle Wars solo-test started. You are " + playerSide
-                        + "; " + TestNpcService.displayName() + " is " + playerSide.opponent()
-                        + ". Break the NPC castle bed, then defeat the NPC to score."), true);
+                "Castle Wars v0.2 solo-test: you are " + playerSide
+                        + ", " + TestNpcService.displayName() + " is " + playerSide.opponent()
+                        + ". Central gate, two flank breaches, War Camp and Castle Core are active."), true);
         return 1;
     }
 
@@ -143,42 +145,47 @@ public final class WarsEvents {
             source.sendFailure(new StringTextComponent("Castle Wars: no match exists."));
             return 0;
         }
-        String npcText = TestNpcService.side() == null
-                ? ""
-                : " | test NPC " + TestNpcService.displayName() + "=" + TestNpcService.side();
+        String npcText = TestNpcService.side() == null ? "" : " | NPC=" + TestNpcService.side();
+        String camp = WarCampService.controller() == null ? "NEUTRAL" : WarCampService.controller().name();
         source.sendSuccess(new StringTextComponent(
-                "Castle Wars score: RED " + match.score(Side.RED) + " : " + match.score(Side.BLUE) + " BLUE"
-                        + " | guards RED " + CastleGuardService.livingGuards(Side.RED)
-                        + " : " + CastleGuardService.livingGuards(Side.BLUE) + " BLUE"
-                        + npcText), false);
+                "Castle Wars " + MatchManager.stageName()
+                        + " | RED " + match.score(Side.RED) + " : " + match.score(Side.BLUE) + " BLUE"
+                        + " | Core R=" + (match.isBedDestroyed(Side.RED) ? "DOWN" : "UP")
+                        + " B=" + (match.isBedDestroyed(Side.BLUE) ? "DOWN" : "UP")
+                        + " | Guards " + CastleGuardService.livingGuards(Side.RED) + ":" + CastleGuardService.livingGuards(Side.BLUE)
+                        + " | Gates " + SiegeGateService.health(Side.RED) + ":" + SiegeGateService.health(Side.BLUE)
+                        + " | War Camp=" + camp + npcText), false);
         return 1;
     }
 
     @SubscribeEvent
     public static void onBlockBreak(BlockEvent.BreakEvent event) {
-        if (!MatchManager.isRunning() || !(event.getPlayer() instanceof ServerPlayerEntity)) {
-            return;
-        }
+        if (!MatchManager.isRunning() || !(event.getPlayer() instanceof ServerPlayerEntity)) return;
         ServerPlayerEntity player = (ServerPlayerEntity) event.getPlayer();
-        if (player.getLevel() != MatchManager.world()) {
-            return;
-        }
+        if (player.getLevel() != MatchManager.world()) return;
         Side attacker = MatchManager.sideOf(player.getUUID());
-        if (attacker == null) {
-            return;
-        }
+        if (attacker == null) return;
 
         BlockPos center = MatchManager.center();
         Side objectiveOwner = ArenaCoordinates.objectiveOwnerAt(center, event.getPos());
         if (objectiveOwner != null) {
             event.setCanceled(true);
-            if (objectiveOwner == attacker) {
-                return;
-            }
+            if (!MatchManager.isCombatActive() || objectiveOwner == attacker) return;
             if (MatchManager.destroyObjective(objectiveOwner, attacker)) {
                 player.displayClientMessage(new StringTextComponent(
-                        "Enemy bed destroyed. Defeat the defender to score a point!"), false);
+                        "§6Castle Core destroyed. §fDefeat the defender to capture the castle!"), false);
             }
+            return;
+        }
+
+        Side gateOwner = SiegeGateService.ownerAt(center, event.getPos());
+        if (gateOwner != null) {
+            event.setCanceled(true);
+            if (!MatchManager.isCombatActive() || gateOwner == attacker || SiegeGateService.isDestroyed(gateOwner)) return;
+            int damage = siegeDamage(player);
+            SiegeGateService.DamageResult result = SiegeGateService.damage(
+                    MatchManager.world(), center, gateOwner, attacker, damage);
+            MatchFeedbackService.onGateDamaged(player, gateOwner, result);
             return;
         }
 
@@ -187,15 +194,18 @@ public final class WarsEvents {
         }
     }
 
+    private static int siegeDamage(ServerPlayerEntity player) {
+        if (player.getMainHandItem().getItem() instanceof AxeItem) return 35;
+        if (player.getMainHandItem().getItem() instanceof PickaxeItem) return 22;
+        if (player.getMainHandItem().getItem() instanceof SwordItem) return 8;
+        return 12;
+    }
+
     @SubscribeEvent
     public static void onObjectiveInteract(PlayerInteractEvent.RightClickBlock event) {
-        if (!MatchManager.isRunning() || !(event.getPlayer() instanceof ServerPlayerEntity)) {
-            return;
-        }
+        if (!MatchManager.isRunning() || !(event.getPlayer() instanceof ServerPlayerEntity)) return;
         ServerPlayerEntity player = (ServerPlayerEntity) event.getPlayer();
-        if (player.getLevel() != MatchManager.world() || MatchManager.sideOf(player.getUUID()) == null) {
-            return;
-        }
+        if (player.getLevel() != MatchManager.world() || MatchManager.sideOf(player.getUUID()) == null) return;
         if (ArenaCoordinates.objectiveOwnerAt(MatchManager.center(), event.getPos()) != null) {
             event.setCanceled(true);
         }
@@ -203,25 +213,17 @@ public final class WarsEvents {
 
     @SubscribeEvent
     public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
-        if (!MatchManager.isRunning()) {
-            return;
-        }
+        if (!MatchManager.isRunning()) return;
         Entity entity = event.getEntity();
-        if (!(entity instanceof ServerPlayerEntity)) {
-            return;
-        }
+        if (!(entity instanceof ServerPlayerEntity)) return;
         ServerPlayerEntity player = (ServerPlayerEntity) entity;
-        if (player.getLevel() != MatchManager.world()) {
-            return;
-        }
+        if (player.getLevel() != MatchManager.world()) return;
         MatchManager.recordPlayerPlacedBlock(player.getUUID(), event.getPos());
     }
 
     @SubscribeEvent
     public static void onLivingAttack(LivingAttackEvent event) {
-        if (!MatchManager.isRunning()) {
-            return;
-        }
+        if (!MatchManager.isRunning()) return;
 
         Entity attacker = event.getSource().getEntity();
         Entity victim = event.getEntityLiving();
@@ -229,24 +231,32 @@ public final class WarsEvents {
         Side victimGuard = CastleGuardService.sideOf(victim);
         Side attackingNpc = TestNpcService.sideOf(attacker);
         Side victimNpc = TestNpcService.sideOf(victim);
-        Side attackingPlayer = attacker instanceof ServerPlayerEntity
-                ? MatchManager.sideOf(attacker.getUUID()) : null;
-        Side victimPlayer = victim instanceof ServerPlayerEntity
-                ? MatchManager.sideOf(victim.getUUID()) : null;
+        Side attackingPlayer = attacker instanceof ServerPlayerEntity ? MatchManager.sideOf(attacker.getUUID()) : null;
+        Side victimPlayer = victim instanceof ServerPlayerEntity ? MatchManager.sideOf(victim.getUUID()) : null;
 
-        // A castle guard may damage only the opposing real participant, never allies, mobs, NPCs, or other guards.
-        if (attackingGuard != null && victimPlayer != attackingGuard.opponent()) {
+        if (!MatchManager.isCombatActive()) {
+            if (attackingGuard != null || victimGuard != null || attackingNpc != null || victimNpc != null
+                    || attackingPlayer != null || victimPlayer != null) {
+                event.setCanceled(true);
+            }
+            return;
+        }
+
+        // Guards may damage only the opposing participant (real player or solo-test NPC).
+        if (attackingGuard != null
+                && victimPlayer != attackingGuard.opponent()
+                && victimNpc != attackingGuard.opponent()) {
             event.setCanceled(true);
             return;
         }
 
-        // The solo-test NPC may damage only the opposing real participant.
+        // Solo NPC attacks only the opposing real participant.
         if (attackingNpc != null && victimPlayer != attackingNpc.opponent()) {
             event.setCanceled(true);
             return;
         }
 
-        // Friendly participants cannot damage their own guards or their own test NPC.
+        // Friendly participants cannot damage their own guards/NPC.
         if (victimGuard != null && attackingPlayer == victimGuard) {
             event.setCanceled(true);
             return;
@@ -258,69 +268,31 @@ public final class WarsEvents {
 
     @SubscribeEvent
     public static void onLivingDeath(LivingDeathEvent event) {
-        if (!MatchManager.isRunning()) {
-            return;
-        }
+        if (!MatchManager.isRunning() || !MatchManager.isCombatActive()) return;
 
         Entity defeated = event.getEntityLiving();
         Side npcSide = TestNpcService.sideOf(defeated);
         if (npcSide != null) {
             Entity sourceEntity = event.getSource().getEntity();
             Side defeatingSide = sourceEntity instanceof ServerPlayerEntity
-                    ? MatchManager.sideOf(sourceEntity.getUUID())
-                    : CastleGuardService.sideOf(sourceEntity);
+                    ? MatchManager.sideOf(sourceEntity.getUUID()) : CastleGuardService.sideOf(sourceEntity);
             MatchState.KillResult result = MatchManager.onParticipantDefeated(defeated.getUUID(), defeatingSide);
             event.setCanceled(true);
             if (MatchManager.world() != null && MatchManager.center() != null) {
                 TestNpcService.onDefeated(MatchManager.world(), MatchManager.center(), result);
             }
-            notifyHumanSide(result, defeatingSide, sourceEntity, true);
             return;
         }
 
-        if (!(event.getEntityLiving() instanceof ServerPlayerEntity)) {
-            return;
-        }
+        if (!(event.getEntityLiving() instanceof ServerPlayerEntity)) return;
         ServerPlayerEntity victim = (ServerPlayerEntity) event.getEntityLiving();
-        if (victim.getLevel() != MatchManager.world() || MatchManager.sideOf(victim.getUUID()) == null) {
-            return;
-        }
+        if (victim.getLevel() != MatchManager.world() || MatchManager.sideOf(victim.getUUID()) == null) return;
 
         Entity sourceEntity = event.getSource().getEntity();
         Side defeatingSide = sourceEntity instanceof ServerPlayerEntity
-                ? MatchManager.sideOf(sourceEntity.getUUID())
-                : CastleGuardService.sideOf(sourceEntity);
-        if (defeatingSide == null) {
-            defeatingSide = TestNpcService.sideOf(sourceEntity);
-        }
-        MatchState.KillResult result = MatchManager.onParticipantDefeated(victim.getUUID(), defeatingSide);
-        notifyHumanSide(result, defeatingSide, sourceEntity, false);
-    }
-
-    private static void notifyHumanSide(MatchState.KillResult result, Side defeatingSide, Entity sourceEntity, boolean victimWasNpc) {
-        if (result != MatchState.KillResult.POINT && result != MatchState.KillResult.MATCH_WON) {
-            return;
-        }
-        MatchState match = MatchManager.state();
-        if (match == null || defeatingSide == null || MatchManager.world() == null) {
-            return;
-        }
-        ServerPlayerEntity creditedPlayer = MatchManager.world().getServer().getPlayerList().getPlayer(match.player(defeatingSide));
-        if (creditedPlayer == null) {
-            return;
-        }
-
-        String message;
-        if (result == MatchState.KillResult.MATCH_WON) {
-            message = "Your side won Castle Wars!";
-        } else if (victimWasNpc) {
-            message = "Test NPC defeated after bed destruction: +1 point!";
-        } else if (CastleGuardService.sideOf(sourceEntity) != null) {
-            message = "Your castle guard secured the capture: +1 point!";
-        } else {
-            message = "Castle captured: +1 point!";
-        }
-        creditedPlayer.displayClientMessage(new StringTextComponent(message), false);
+                ? MatchManager.sideOf(sourceEntity.getUUID()) : CastleGuardService.sideOf(sourceEntity);
+        if (defeatingSide == null) defeatingSide = TestNpcService.sideOf(sourceEntity);
+        MatchManager.onParticipantDefeated(victim.getUUID(), defeatingSide);
     }
 
     @SubscribeEvent
