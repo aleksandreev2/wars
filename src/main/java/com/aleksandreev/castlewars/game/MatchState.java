@@ -70,21 +70,28 @@ public final class MatchState {
     }
 
     /**
-     * A death only scores if the victim's objective bed was already destroyed and the killer is the opponent.
-     * Environmental deaths and self-kills intentionally do not score.
+     * A participant death scores only after that participant's objective bed was destroyed and the defeating
+     * side is the opponent. Environmental deaths and self/friendly defeats intentionally do not score.
      */
     public KillResult onKill(UUID victimId, UUID killerId) {
-        if (finished || victimId == null || killerId == null) {
+        if (killerId == null) {
+            return KillResult.NONE;
+        }
+        return onDefeat(victimId, sideOf(killerId));
+    }
+
+    /** Allows a team-owned arena entity, such as a castle guard golem, to receive team credit. */
+    public KillResult onDefeat(UUID victimId, Side defeatingSide) {
+        if (finished || victimId == null || defeatingSide == null) {
             return KillResult.NONE;
         }
         Side victim = sideOf(victimId);
-        Side killer = sideOf(killerId);
-        if (victim == null || killer == null || !CaptureRules.awardsPoint(isBedDestroyed(victim), victim, killer)) {
+        if (victim == null || !CaptureRules.awardsPoint(isBedDestroyed(victim), victim, defeatingSide)) {
             return KillResult.NONE;
         }
 
-        int next = scores.get(killer) + 1;
-        scores.put(killer, next);
+        int next = scores.get(defeatingSide) + 1;
+        scores.put(defeatingSide, next);
         if (CaptureRules.hasWon(next, targetScore)) {
             finished = true;
             return KillResult.MATCH_WON;
