@@ -3,6 +3,7 @@ package com.aleksandreev.castlewars.command;
 import com.aleksandreev.castlewars.CastleWarsMod;
 import com.aleksandreev.castlewars.arena.ArenaBuildService;
 import com.aleksandreev.castlewars.arena.ArenaCoordinates;
+import com.aleksandreev.castlewars.game.CastleGuardService;
 import com.aleksandreev.castlewars.game.MatchManager;
 import com.aleksandreev.castlewars.game.MatchState;
 import com.aleksandreev.castlewars.game.Side;
@@ -16,8 +17,10 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.StringTextComponent;
 import net.minecraftforge.event.RegisterCommandsEvent;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.living.LivingAttackEvent;
 import net.minecraftforge.event.entity.living.LivingDeathEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
@@ -83,7 +86,7 @@ public final class WarsEvents {
                                                     context.getSource().sendSuccess(new StringTextComponent(
                                                             "Castle Wars started: RED " + red.getGameProfile().getName()
                                                                     + " vs BLUE " + blue.getGameProfile().getName()
-                                                                    + ". First to 10 points."), true);
+                                                                    + ". First to 10 points. Each castle has 5 iron golem guards."), true);
                                                     return 1;
                                                 }))))
                         .then(Commands.literal("score")
@@ -94,7 +97,9 @@ public final class WarsEvents {
                                         return 0;
                                     }
                                     context.getSource().sendSuccess(new StringTextComponent(
-                                            "Castle Wars score: RED " + match.score(Side.RED) + " : " + match.score(Side.BLUE) + " BLUE"), false);
+                                            "Castle Wars score: RED " + match.score(Side.RED) + " : " + match.score(Side.BLUE) + " BLUE"
+                                                    + " | guards RED " + CastleGuardService.livingGuards(Side.RED)
+                                                    + " : " + CastleGuardService.livingGuards(Side.BLUE) + " BLUE"), false);
                                     return 1;
                                 }))
                         .then(Commands.literal("stop")
@@ -139,6 +144,20 @@ public final class WarsEvents {
     }
 
     @SubscribeEvent
+    public static void onObjectiveInteract(PlayerInteractEvent.RightClickBlock event) {
+        if (!MatchManager.isRunning() || !(event.getPlayer() instanceof ServerPlayerEntity)) {
+            return;
+        }
+        ServerPlayerEntity player = (ServerPlayerEntity) event.getPlayer();
+        if (player.getLevel() != MatchManager.world() || MatchManager.sideOf(player.getUUID()) == null) {
+            return;
+        }
+        if (ArenaCoordinates.objectiveOwnerAt(MatchManager.center(), event.getPos()) != null) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
     public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
         if (!MatchManager.isRunning()) {
             return;
@@ -155,6 +174,33 @@ public final class WarsEvents {
     }
 
     @SubscribeEvent
+    public static void onLivingAttack(LivingAttackEvent event) {
+        if (!MatchManager.isRunning()) {
+            return;
+        }
+
+        Entity attacker = event.getSource().getEntity();
+        Entity victim = event.getEntityLiving();
+        Side attackingGuard = CastleGuardService.sideOf(attacker);
+        Side victimGuard = CastleGuardService.sideOf(victim);
+        Side attackingPlayer = attacker instanceof ServerPlayerEntity
+                ? MatchManager.sideOf(attacker.getUUID()) : null;
+        Side victimPlayer = victim instanceof ServerPlayerEntity
+                ? MatchManager.sideOf(victim.getUUID()) : null;
+
+        // A castle guard may damage only the opposing participant, never allies, mobs, or the other guards.
+        if (attackingGuard != null && victimPlayer != attackingGuard.opponent()) {
+            event.setCanceled(true);
+            return;
+        }
+
+        // Friendly participants cannot damage their own five guards. Opponents may fight them normally.
+        if (victimGuard != null && attackingPlayer == victimGuard) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
     public static void onLivingDeath(LivingDeathEvent event) {
         if (!MatchManager.isRunning() || !(event.getEntityLiving() instanceof ServerPlayerEntity)) {
             return;
@@ -165,17 +211,23 @@ public final class WarsEvents {
         }
 
         Entity sourceEntity = event.getSource().getEntity();
-        UUIDPair ids = new UUIDPair(victim, sourceEntity instanceof ServerPlayerEntity ? (ServerPlayerEntity) sourceEntity : null);
-        MatchState.KillResult result = MatchManager.onPlayerKilled(ids.victimId, ids.killerId);
-        if (result == MatchState.KillResult.POINT) {
-            ServerPlayerEntity killer = ids.killer;
-            if (killer != null) {
-                killer.displayClientMessage(new StringTextComponent("Castle captured: +1 point!"), false);
-            }
-        } else if (result == MatchState.KillResult.MATCH_WON) {
-            ServerPlayerEntity killer = ids.killer;
-            if (killer != null) {
-                killer.displayClientMessage(new StringTextComponent("You won Castle Wars!"), false);
+        Side defeatingSide = sourceEntity instanceof ServerPlayerEntity
+                ? MatchManager.sideOf(sourceEntity.getUUID())
+                : CastleGuardService.sideOf(sourceEntity);
+        MatchState.KillResult result = MatchManager.onParticipantDefeated(victim.getUUID(), defeatingSide);
+
+        if (result == MatchState.KillResult.POINT || result == MatchState.KillResult.MATCH_WON) {
+            MatchState match = MatchManager.state();
+            if (match != null && defeatingSide != null) {
+                ServerPlayerEntity creditedPlayer = MatchManager.world().getServer().getPlayerList().getPlayer(match.player(defeatingSide));
+                if (creditedPlayer != null) {
+                    String message = result == MatchState.KillResult.MATCH_WON
+                            ? "Your side won Castle Wars!"
+                            : (CastleGuardService.sideOf(sourceEntity) != null
+                                ? "Your castle guard secured the capture: +1 point!"
+                                : "Castle captured: +1 point!");
+                    creditedPlayer.displayClientMessage(new StringTextComponent(message), false);
+                }
             }
         }
     }
@@ -192,18 +244,6 @@ public final class WarsEvents {
         if (event.phase == TickEvent.Phase.END) {
             ArenaBuildService.tick();
             MatchManager.tick();
-        }
-    }
-
-    private static final class UUIDPair {
-        private final java.util.UUID victimId;
-        private final java.util.UUID killerId;
-        private final ServerPlayerEntity killer;
-
-        private UUIDPair(ServerPlayerEntity victim, ServerPlayerEntity killer) {
-            this.victimId = victim.getUUID();
-            this.killer = killer;
-            this.killerId = killer == null ? null : killer.getUUID();
         }
     }
 }
