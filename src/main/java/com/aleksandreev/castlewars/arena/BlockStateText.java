@@ -5,11 +5,11 @@ import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import net.minecraft.block.BlockState;
 import net.minecraft.command.arguments.BlockStateParser;
 
-final class BlockStateText {
+public final class BlockStateText {
     private BlockStateText() {
     }
 
-    static BlockState parseRequired(String encodedState) {
+    public static BlockState parseRequired(String encodedState) {
         try {
             BlockStateParser parser = new BlockStateParser(new StringReader(encodedState), true);
             parser.parse(false);
