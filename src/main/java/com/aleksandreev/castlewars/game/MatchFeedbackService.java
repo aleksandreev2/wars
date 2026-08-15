@@ -2,13 +2,15 @@ package com.aleksandreev.castlewars.game;
 
 import com.aleksandreev.castlewars.arena.ArenaCoordinates;
 import net.minecraft.entity.player.ServerPlayerEntity;
+import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.SoundCategory;
-import net.minecraft.util.SoundEvents;
+import net.minecraft.util.SoundEvent;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.text.StringTextComponent;
 import net.minecraft.world.BossInfo;
 import net.minecraft.world.server.ServerBossInfo;
 import net.minecraft.world.server.ServerWorld;
+import net.minecraftforge.registries.ForgeRegistries;
 
 /** Server-driven HUD and event feedback. No client packet registration is required for the v0.2 prototype. */
 public final class MatchFeedbackService {
@@ -68,11 +70,11 @@ public final class MatchFeedbackService {
         ServerPlayerEntity defender = world.getServer().getPlayerList().getPlayer(match.player(owner));
         if (defender != null) {
             defender.displayClientMessage(new StringTextComponent("§c§lLAST STAND §7— §fYour Core is down. Survive!"), false);
-            world.playSound(null, defender.blockPosition(), SoundEvents.BLOCK_BELL_USE, SoundCategory.MASTER, 1.4F, 0.65F);
+            play(world, defender.blockPosition(), "minecraft:block.bell.use", 1.4F, 0.65F);
         }
         ServerPlayerEntity attackingPlayer = world.getServer().getPlayerList().getPlayer(match.player(attacker));
         if (attackingPlayer != null) {
-            world.playSound(null, attackingPlayer.blockPosition(), SoundEvents.BLOCK_ANVIL_DESTROY, SoundCategory.MASTER, 1.0F, 0.9F);
+            play(world, attackingPlayer.blockPosition(), "minecraft:block.anvil.destroy", 1.0F, 0.9F);
         }
     }
 
@@ -80,6 +82,7 @@ public final class MatchFeedbackService {
         if (attacker == null || result == null || !result.damaged) return;
         if (result.destroyed) {
             attacker.displayClientMessage(new StringTextComponent("§6§l" + owner + " GATE BREACHED! §fThe central route is open."), false);
+            play((ServerWorld) attacker.getLevel(), attacker.blockPosition(), "minecraft:block.anvil.destroy", 1.1F, 0.75F);
         } else {
             attacker.displayClientMessage(new StringTextComponent("§7Siege Gate §f" + result.health + "§7/§f" + SiegeGateService.MAX_HEALTH + " HP"), true);
         }
@@ -185,7 +188,7 @@ public final class MatchFeedbackService {
         ServerPlayerEntity attacker = world.getServer().getPlayerList().getPlayer(match.player(castleOwner.opponent()));
         if (defender != null) {
             defender.displayClientMessage(new StringTextComponent("§c§l⚠ ENEMY IN YOUR CASTLE §7— §fDefend the Core!"), false);
-            world.playSound(null, defender.blockPosition(), SoundEvents.BLOCK_BELL_USE, SoundCategory.MASTER, 1.5F, 0.7F);
+            play(world, defender.blockPosition(), "minecraft:block.bell.use", 1.5F, 0.7F);
         }
         if (attacker != null) {
             attacker.displayClientMessage(new StringTextComponent("§6FORTRESS BREACHED §7— §fFind and destroy the Castle Core."), false);
@@ -207,6 +210,13 @@ public final class MatchFeedbackService {
             if (player != null) {
                 player.displayClientMessage(new StringTextComponent(text), false);
             }
+        }
+    }
+
+    private static void play(ServerWorld world, BlockPos pos, String id, float volume, float pitch) {
+        SoundEvent sound = ForgeRegistries.SOUND_EVENTS.getValue(new ResourceLocation(id));
+        if (sound != null) {
+            world.playSound(null, pos, sound, SoundCategory.MASTER, volume, pitch);
         }
     }
 }
