@@ -49,6 +49,19 @@ class MatchStateTest {
     }
 
     @Test
+    void npcUuidBehavesLikeARealParticipantForCaptureRules() {
+        UUID npc = UUID.fromString("00000000-0000-0000-0000-000000000099");
+        MatchState match = new MatchState(red, npc, 10);
+
+        assertEquals(MatchState.KillResult.NONE, match.onDefeat(npc, Side.RED));
+        assertEquals(0, match.score(Side.RED));
+
+        assertTrue(match.destroyBed(Side.BLUE, Side.RED));
+        assertEquals(MatchState.KillResult.POINT, match.onDefeat(npc, Side.RED));
+        assertEquals(1, match.score(Side.RED));
+    }
+
+    @Test
     void deathWithoutValidOpponentDoesNotScore() {
         MatchState match = new MatchState(red, blue, 10);
         match.destroyBed(Side.BLUE, Side.RED);
