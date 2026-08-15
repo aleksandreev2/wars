@@ -14,6 +14,25 @@ Castle Wars is a competitive Minecraft Forge **1.16.5** minigame built around tw
 - The first player to **10 points** wins the match.
 - After a scored capture, the round is reset: beds, guards and player-built blocks are restored/cleared and players return to their bases.
 
+## Solo-test NPC mode
+
+When only one Minecraft client is available, the mod can create a server-side combat NPC and run the same match state against it.
+
+- The NPC is a persistent vanilla Vindicator named `Castle Bot [RED]` or `Castle Bot [BLUE]`.
+- It has a real entity UUID and occupies one side in the normal match state, so bed -> defender defeat -> point is tested through the same scoring code as multiplayer.
+- It stays in its own castle and attacks the human opponent when that player invades its castle territory.
+- If defeated before its bed is destroyed, it immediately respawns with no point awarded.
+- If defeated after its bed is destroyed, the human side receives +1 and the normal round reset runs.
+- The NPC is recreated/reset automatically between rounds and cleaned up when the test stops.
+
+Commands:
+
+- `/wars test start` — start solo test as RED against a BLUE NPC.
+- `/wars test start red` — explicitly play RED against a BLUE NPC.
+- `/wars test start blue` — play BLUE against a RED NPC.
+- `/wars test score` — show score, guard counts and NPC side.
+- `/wars test stop` — stop solo test and clean up the NPC/guards.
+
 ## Arena
 
 The project bundles the supplied `medieval_castle.schem` asset and reads Sponge Schematic v3 directly. Players do **not** need WorldEdit installed at runtime.
@@ -42,6 +61,9 @@ Because the GitHub connector used during development cannot upload arbitrary bin
 - `/wars match start <red> <blue>` — start a 1v1 match and summon five guards for each castle.
 - `/wars match score` — show current score and remaining living guards on both sides.
 - `/wars match stop` — stop the active match and clean up guards/player-built blocks.
+- `/wars test start [red|blue]` — run a one-client match against the combat NPC.
+- `/wars test score` — show solo-test status.
+- `/wars test stop` — stop and clean up solo-test mode.
 
 Arena construction is tick-budgeted instead of placing the entire structure in one server tick.
 
@@ -55,4 +77,5 @@ Arena construction is tick-budgeted instead of placing the entire structure in o
 6. Opposing-player/guard capture validation and first-to-10 scoring.
 7. Respawn and round reset.
 8. Immutable castle shell + tracking/removal of player-placed blocks.
-9. HUD/messages and runtime multiplayer testing.
+9. Solo-test NPC for one-client gameplay validation.
+10. HUD/messages and runtime multiplayer testing.

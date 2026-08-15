@@ -27,14 +27,9 @@ public final class MatchManager {
     }
 
     public static synchronized String start(ServerPlayerEntity red, ServerPlayerEntity blue) {
-        if (match != null && !match.isFinished()) {
-            return "A Castle Wars match is already running.";
-        }
-        if (ArenaBuildService.isBuilding()) {
-            return "The arena is still building.";
-        }
-        if (!ArenaBuildService.hasArena() || ArenaBuildService.arenaCenter() == null) {
-            return "Build the arena first with /wars arena build.";
+        String validation = validateArenaReady();
+        if (validation != null) {
+            return validation;
         }
         if (red.getLevel() != blue.getLevel()) {
             return "Both players must be in the same dimension.";
@@ -49,6 +44,7 @@ public final class MatchManager {
         center = ArenaBuildService.arenaCenter().immutable();
         roundResetTicks = -1;
         playerPlacedBlocks.clear();
+        TestNpcService.clear();
         restoreObjectiveBeds();
         preparePlayer(red, Side.RED);
         preparePlayer(blue, Side.BLUE);
@@ -57,7 +53,65 @@ public final class MatchManager {
         return null;
     }
 
+    /** Starts a full scoring match against a server-side combat NPC for one-client testing. */
+    public static synchronized String startSolo(ServerPlayerEntity player, Side playerSide) {
+        String validation = validateArenaReady();
+        if (validation != null) {
+            return validation;
+        }
+        if (playerSide == null) {
+            return "Player side is required.";
+        }
+
+        if (match != null) {
+            stop();
+        }
+
+        world = player.getLevel();
+        center = ArenaBuildService.arenaCenter().immutable();
+        roundResetTicks = -1;
+        playerPlacedBlocks.clear();
+        restoreObjectiveBeds();
+
+        Side npcSide = playerSide.opponent();
+        final UUID npcId;
+        try {
+            npcId = TestNpcService.spawn(world, center, npcSide);
+        } catch (RuntimeException ex) {
+            CastleWarsMod.LOGGER.error("Failed to spawn solo-test NPC", ex);
+            TestNpcService.clear();
+            world = null;
+            center = null;
+            return "Failed to create the test NPC. Check the server log.";
+        }
+
+        UUID redId = playerSide == Side.RED ? player.getUUID() : npcId;
+        UUID blueId = playerSide == Side.BLUE ? player.getUUID() : npcId;
+        match = new MatchState(redId, blueId, CaptureRules.DEFAULT_WIN_SCORE);
+
+        preparePlayer(player, playerSide);
+        TestNpcService.reset(world, center, match);
+        CastleGuardService.reset(world, center, match);
+        CastleWarsMod.LOGGER.info("Castle Wars solo-test started: player={} side={} npcSide={}",
+                player.getGameProfile().getName(), playerSide, npcSide);
+        return null;
+    }
+
+    private static String validateArenaReady() {
+        if (match != null && !match.isFinished()) {
+            return "A Castle Wars match is already running.";
+        }
+        if (ArenaBuildService.isBuilding()) {
+            return "The arena is still building.";
+        }
+        if (!ArenaBuildService.hasArena() || ArenaBuildService.arenaCenter() == null) {
+            return "Build the arena first with /wars arena build.";
+        }
+        return null;
+    }
+
     public static synchronized void stop() {
+        TestNpcService.clear();
         CastleGuardService.clear();
         if (world != null) {
             clearPlayerPlacedBlocks();
@@ -120,6 +174,7 @@ public final class MatchManager {
             roundResetTicks = ROUND_RESET_DELAY_TICKS;
             CastleWarsMod.LOGGER.info("Castle captured. Score RED {} : {} BLUE", match.score(Side.RED), match.score(Side.BLUE));
         } else if (result == MatchState.KillResult.MATCH_WON) {
+            TestNpcService.clear();
             CastleGuardService.clear();
             clearPlayerPlacedBlocks();
             restoreObjectiveBeds();
@@ -155,17 +210,19 @@ public final class MatchManager {
             return;
         }
 
-        CastleGuardService.tick(world, center, match);
+        // During the short capture-reset pause, keep combat AI from immediately reacquiring targets.
+        if (roundResetTicks >= 0) {
+            if (roundResetTicks > 0) {
+                roundResetTicks--;
+                return;
+            }
+            resetRound();
+            roundResetTicks = -1;
+            return;
+        }
 
-        if (roundResetTicks < 0) {
-            return;
-        }
-        if (roundResetTicks > 0) {
-            roundResetTicks--;
-            return;
-        }
-        resetRound();
-        roundResetTicks = -1;
+        TestNpcService.tick(world, center, match);
+        CastleGuardService.tick(world, center, match);
     }
 
     private static void resetRound() {
@@ -178,6 +235,7 @@ public final class MatchManager {
         ServerPlayerEntity blue = world.getServer().getPlayerList().getPlayer(match.player(Side.BLUE));
         if (red != null) preparePlayer(red, Side.RED);
         if (blue != null) preparePlayer(blue, Side.BLUE);
+        TestNpcService.reset(world, center, match);
         CastleGuardService.reset(world, center, match);
         CastleWarsMod.LOGGER.info("Castle Wars round reset");
     }
