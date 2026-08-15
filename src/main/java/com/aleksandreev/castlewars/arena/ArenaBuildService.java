@@ -56,7 +56,8 @@ public final class ArenaBuildService {
             return;
         }
         if (activeTask.tick(BLOCKS_PER_TICK)) {
-            CastleWarsMod.LOGGER.info("Arena build completed at {}", arenaCenter);
+            activeTask.finishFeatures();
+            CastleWarsMod.LOGGER.info("Arena build completed at {} with v0.2 siege battlefield", arenaCenter);
             activeTask = null;
         }
     }
@@ -96,6 +97,7 @@ public final class ArenaBuildService {
 
     private static final class BuildTask {
         private final ServerWorld world;
+        private final BlockPos center;
         private final SpongeV3Schematic schematic;
         private final BlockPos redAnchor;
         private final BlockPos blueAnchor;
@@ -105,6 +107,7 @@ public final class ArenaBuildService {
 
         private BuildTask(ServerWorld world, BlockPos center, SpongeV3Schematic schematic) {
             this.world = world;
+            this.center = center;
             this.schematic = schematic;
             this.redAnchor = ArenaLayout.redAnchor(center);
             this.blueAnchor = ArenaLayout.blueAnchor(center);
@@ -118,6 +121,10 @@ public final class ArenaBuildService {
                 placeCell(cursor++);
             }
             return cursor >= totalCells;
+        }
+
+        private void finishFeatures() {
+            ArenaFeatureService.buildStaticFeatures(world, center);
         }
 
         private int progressPercent() {
